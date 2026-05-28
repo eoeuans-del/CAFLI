@@ -46,11 +46,10 @@
     // 1. 지도 초기화 (서울 중심)
     var map = L.map('map').setView([37.5665, 126.9780], 10);
 
-    // 2. 배경 지도 추가 (OpenStreetMap)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
+    // 2. 배경 지도 추가 (OpenStreetMap - 기본 한국어 지명 지원)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
     }).addTo(map);
 
     // 정보창(우측 상단) 컨트롤
