@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Data files (often too large for Git)
+*.csv
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.geojson
+*.img
+*.xlsx
