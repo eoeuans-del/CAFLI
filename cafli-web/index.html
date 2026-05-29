@@ -170,15 +170,14 @@
                         '#FFEDA0';
     }
 
-    // 스타일 적용 함수
+    // 스타일 적용 함수 (읍면동 경계선을 보이지 않게 처리)
     function style(feature) {
         return {
             fillColor: getColor(feature.properties.CAFLI_Index),
-            weight: 1,
-            opacity: 1,
-            color: 'white',
-            dashArray: '3',
-            fillOpacity: 0.7
+            weight: 0, // 경계선 두께 0으로 설정하여 읍면동 구분선 제거
+            opacity: 0, // 경계선 투명도
+            color: 'transparent',
+            fillOpacity: 0.8
         };
     }
 
@@ -186,11 +185,9 @@
     var geojson;
     function highlightFeature(e) {
         var layer = e.target;
+        // 호버 시에도 경계선이 두드러지지 않게 투명도만 살짝 조정
         layer.setStyle({
-            weight: 3,
-            color: '#666',
-            dashArray: '',
-            fillOpacity: 0.9
+            fillOpacity: 1.0
         });
         if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
             layer.bringToFront();
