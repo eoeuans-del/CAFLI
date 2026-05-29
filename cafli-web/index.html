@@ -222,38 +222,40 @@
                 onEachFeature: onEachFeature
             }).addTo(map);
             
-            // [추가] 시군구(기초자치단체) 단위 라벨 생성
-            var guBounds = {};
+            // [수정] 광역/기초자치단체 단위 라벨 생성 (서울특별시, 남양주시 등)
+            var labelBounds = {};
             geojson.eachLayer(function(layer) {
                 var nameParts = layer.feature.properties['행정구역'].split(' ');
                 if (nameParts.length >= 2) {
-                    var guName = nameParts[0] + ' ' + nameParts[1];
-                    var shortName = nameParts[1]; // 예: "마포구"
+                    var doName = nameParts[0];
+                    var labelName = "";
                     
-                    // 수원시 권선구 등 '시'와 '구'가 모두 있는 경우
-                    if (nameParts.length >= 3 && nameParts[1].endsWith('시') && nameParts[2].endsWith('구')) {
-                        guName += ' ' + nameParts[2];
-                        shortName = nameParts[1] + ' ' + nameParts[2];
+                    // 특별시, 광역시, 특별자치시 등은 해당 도시 전체를 하나로 묶음
+                    if (doName.endsWith('시')) {
+                        labelName = doName; 
+                    } else {
+                        // 경기도, 강원도 등은 시/군 단위로 묶음 (남양주시, 가평군 등)
+                        labelName = nameParts[1];
                     }
                     
                     var bounds = layer.getBounds();
-                    if (!guBounds[guName]) {
-                        guBounds[guName] = { bounds: L.latLngBounds(bounds.getSouthWest(), bounds.getNorthEast()), name: shortName };
+                    if (!labelBounds[labelName]) {
+                        labelBounds[labelName] = { bounds: L.latLngBounds(bounds.getSouthWest(), bounds.getNorthEast()), name: labelName };
                     } else {
-                        guBounds[guName].bounds.extend(bounds);
+                        labelBounds[labelName].bounds.extend(bounds);
                     }
                 }
             });
 
-            // 계산된 시군구 영역의 중앙에 라벨 텍스트 마커 추가
-            for (var gu in guBounds) {
-                var center = guBounds[gu].bounds.getCenter();
+            // 계산된 영역의 중앙에 큰 라벨 텍스트 마커 추가
+            for (var key in labelBounds) {
+                var center = labelBounds[key].bounds.getCenter();
                 L.marker(center, {
                     icon: L.divIcon({
                         className: 'gu-label',
-                        html: '<div>' + guBounds[gu].name + '</div>',
-                        iconSize: [100, 20],
-                        iconAnchor: [50, 10]
+                        html: '<div style="font-size: 18px; font-weight: 900; color: #111; text-shadow: -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff, 2px 2px 0 #fff;">' + labelBounds[key].name + '</div>',
+                        iconSize: [150, 30],
+                        iconAnchor: [75, 15]
                     }),
                     interactive: false // 마우스 이벤트 무시 (지도 클릭 방해 방지)
                 }).addTo(map);
