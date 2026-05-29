@@ -25,24 +25,53 @@ def process_integrated_transit_data(base_gdf: gpd.GeoDataFrame, bus_csv_path: st
         base_w = 20 if str(row['환승역구분']) == '환승역' else 10
         line_name = str(row['노선명'])
         
-        # 1. 노선별 평판/빈도 보정 (Reputation Bonus/Penalty)
+        # 1. 노선별 평판/기본 빈도 보정
         multiplier = 1.0
         if any(x in line_name for x in ['2호선', '9호선', '신분당선']):
-            multiplier += 0.2 # 황금노선 보너스
+            multiplier += 0.2
         elif any(x in line_name for x in ['경의중앙선', '경춘선', '경강선', '수인분당선']):
-            multiplier -= 0.3 # 악명 높은 노선 페널티
+            multiplier -= 0.3
             
-        # 2. 외곽 구간 감쇄 (Terminal/Outer Decay)
-        # 도심에서 멀어질수록 '중간 회차' 등으로 인해 배차가 줄어드는 현상 반영
+        # 2. [데이터 모델링 지침 반영] 특정 기점역 이후 배차 간격 취약 구간 정밀 타격
         dist_from_center = ((row['lon_5179'] - center_x)**2 + (row['lat_5179'] - center_y)**2)**0.5
-        # 30km 이상 멀어지면 최대 30%까지 점진적 감쇄
-        decay = max(0.7, 1.0 - (dist_from_center / 100000)) 
         
-        # 3. 특정 사례 집중 타격 (수인분당선 죽전 이후 등)
-        if '수인분당선' in line_name and dist_from_center > 35000:
-            multiplier -= 0.2 # 죽전/기흥 이후 인천행 배차 급감 반영
+        # 1호선 (남부 구간: 병점/천안 이후)
+        if '1호선' in line_name:
+            if dist_from_center > 75000: # 신창/온양온천 구간 (최악)
+                multiplier -= 0.5
+            elif dist_from_center > 40000: # 병점~천안 구간 (심각)
+                multiplier -= 0.3
+        
+        # 경의중앙선 (동부 구간: 덕소/용문 이후)
+        if '경의중앙선' in line_name:
+            if dist_from_center > 60000: # 용문~지평 구간 (최악)
+                multiplier -= 0.6
+            elif dist_from_center > 25000: # 덕소~용문 구간
+                multiplier -= 0.2
+                
+        # 경춘선 (마석 이후 취약)
+        if '경춘선' in line_name and dist_from_center > 30000:
+            multiplier -= 0.3
             
-        return base_w * multiplier * decay
+        # 7호선 (서부 구간: 온수/부평구청 이후)
+        if '7호선' in line_name and dist_from_center > 15000: # 서울 경계 이탈
+            if dist_from_center > 25000: # 석남 구간
+                multiplier -= 0.4
+            else: # 부평구청 구간
+                multiplier -= 0.2
+                
+        # 3호선 (일산선: 구파발 이후)
+        if '3호선' in line_name and dist_from_center > 18000: # 구파발 이북
+            multiplier -= 0.2
+            
+        # 수인분당선 (기존 로직 유지)
+        if '수인분당선' in line_name and dist_from_center > 35000:
+            multiplier -= 0.2
+
+        # 3. 일반적인 외곽 구간 감쇄 (Terminal Decay)
+        decay = max(0.7, 1.0 - (dist_from_center / 100000)) 
+            
+        return base_w * max(0.1, multiplier) * decay
 
     # 정확한 거리 계산을 위해 임시로 5179 좌표계 적용
     gdf_temp = gpd.GeoDataFrame(df_rail, geometry=gpd.points_from_xy(df_rail['lon'], df_rail['lat']), crs="EPSG:4326").to_crs(epsg=5179)
