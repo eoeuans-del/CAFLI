@@ -17,9 +17,39 @@ def process_integrated_transit_data(base_gdf: gpd.GeoDataFrame, bus_csv_path: st
     df_rail = df_rail.rename(columns={'역경도': 'lon', '역위도': 'lat'})
     df_rail['transit_type'] = 'railway'
     
-    # 배차 충족률 추정을 위한 가중치 부여: 지하철은 일반 버스보다 배차 빈도 및 수송량이 압도적으로 높음
-    # 환승역일 경우 가중치 추가 (환승역구분 컬럼 활용)
-    df_rail['weight'] = df_rail['환승역구분'].apply(lambda x: 20 if str(x) == '환승역' else 10)
+    # [수정] 배차 품질 정밀화 (Dispatch Sensitivity 모델)
+    # 서울 시청 기준 좌표 (EPSG:5179) - 외곽 감쇄 연산용
+    center_x, center_y = 953936, 1952052 
+
+    def calculate_rail_weight(row):
+        base_w = 20 if str(row['환승역구분']) == '환승역' else 10
+        line_name = str(row['노선명'])
+        
+        # 1. 노선별 평판/빈도 보정 (Reputation Bonus/Penalty)
+        multiplier = 1.0
+        if any(x in line_name for x in ['2호선', '9호선', '신분당선']):
+            multiplier += 0.2 # 황금노선 보너스
+        elif any(x in line_name for x in ['경의중앙선', '경춘선', '경강선', '수인분당선']):
+            multiplier -= 0.3 # 악명 높은 노선 페널티
+            
+        # 2. 외곽 구간 감쇄 (Terminal/Outer Decay)
+        # 도심에서 멀어질수록 '중간 회차' 등으로 인해 배차가 줄어드는 현상 반영
+        dist_from_center = ((row['lon_5179'] - center_x)**2 + (row['lat_5179'] - center_y)**2)**0.5
+        # 30km 이상 멀어지면 최대 30%까지 점진적 감쇄
+        decay = max(0.7, 1.0 - (dist_from_center / 100000)) 
+        
+        # 3. 특정 사례 집중 타격 (수인분당선 죽전 이후 등)
+        if '수인분당선' in line_name and dist_from_center > 35000:
+            multiplier -= 0.2 # 죽전/기흥 이후 인천행 배차 급감 반영
+            
+        return base_w * multiplier * decay
+
+    # 정확한 거리 계산을 위해 임시로 5179 좌표계 적용
+    gdf_temp = gpd.GeoDataFrame(df_rail, geometry=gpd.points_from_xy(df_rail['lon'], df_rail['lat']), crs="EPSG:4326").to_crs(epsg=5179)
+    df_rail['lon_5179'] = gdf_temp.geometry.x
+    df_rail['lat_5179'] = gdf_temp.geometry.y
+    
+    df_rail['weight'] = df_rail.apply(calculate_rail_weight, axis=1)
     df_bus['weight'] = 1
 
     print("2. 두 데이터를 하나의 대중교통 인프라로 수직 병합(Concat)합니다...")
