@@ -84,10 +84,11 @@
     // 1. 지도 초기화 (서울 중심)
     var map = L.map('map').setView([37.5665, 126.9780], 10);
 
-    // 2. 배경 지도 추가 (OpenStreetMap - 기본 한국어 지명 지원)
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19
+    // 2. 배경 지도 추가 (기본 지도가 너무 화려하면 데이터가 안 보이므로 무채색 톤의 지도로 교체)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
     }).addTo(map);
 
     // [추가] 검색창 컨트롤
@@ -158,26 +159,25 @@
     };
     info.addTo(map);
 
-    // 3. CAFLI 점수에 따른 색상 결정 함수 (높을수록 파랑, 낮을수록 빨강)
+    // 3. CAFLI 점수에 따른 색상 결정 함수 (RdYlBu 발산형 팔레트: 전문적인 분석 맵 톤)
     function getColor(d) {
-        return d > 75 ? '#08519c' :  // 진한 파랑
-               d > 70 ? '#3182bd' :  // 파랑
-               d > 65 ? '#6baed6' :  // 밝은 파랑
-               d > 60 ? '#bdd7e7' :  // 아주 밝은 파랑
-               d > 55 ? '#fcae91' :  // 밝은 빨강
-               d > 50 ? '#fb6a4a' :  // 빨강
-               d > 40 ? '#de2d26' :  // 진한 빨강
-                        '#a50f15';   // 매우 진한 빨강
+        return d > 70 ? '#2c7bb6' :  // 세련된 파랑 (최우수)
+               d > 65 ? '#abd9e9' :  // 연한 파랑
+               d > 60 ? '#e0f3f8' :  // 아주 연한 파랑
+               d > 55 ? '#ffffbf' :  // 중립 (연노랑)
+               d > 50 ? '#fdae61' :  // 연한 주황
+               d > 45 ? '#f46d43' :  // 주황/빨강
+                        '#d7191c';   // 세련된 빨강 (취약)
     }
 
-    // 스타일 적용 함수 (읍면동 구분선은 안 보이게 처리)
+    // 스타일 적용 함수 (미니멀 라이트 디자인)
     function style(feature) {
         return {
             fillColor: getColor(feature.properties.CAFLI_Index),
-            weight: 0, // 읍면동 테두리 숨김
-            opacity: 0,
-            color: 'transparent',
-            fillOpacity: 0.7
+            weight: 0.3, // 아주 얇은 실선으로 구별감만 부여
+            opacity: 0.5,
+            color: '#fff',
+            fillOpacity: 0.8 // 데이터를 돋보이게 함
         };
     }
 
@@ -186,7 +186,9 @@
     function highlightFeature(e) {
         var layer = e.target;
         layer.setStyle({
-            fillOpacity: 0.9 // 호버 시 진해지는 효과만 남김 (테두리 제외)
+            fillOpacity: 1.0,
+            weight: 1.5,
+            color: '#666'
         });
         if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
             layer.bringToFront();
