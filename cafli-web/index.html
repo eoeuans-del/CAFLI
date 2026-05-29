@@ -170,14 +170,15 @@
                         '#FFEDA0';
     }
 
-    // 스타일 적용 함수 (읍면동 경계선을 보이지 않게 처리)
+    // 스타일 적용 함수
     function style(feature) {
         return {
             fillColor: getColor(feature.properties.CAFLI_Index),
-            weight: 0, // 경계선 두께 0으로 설정하여 읍면동 구분선 제거
-            opacity: 0, // 경계선 투명도
-            color: 'transparent',
-            fillOpacity: 0.8
+            weight: 1, // 테두리 복구
+            opacity: 1,
+            color: 'white',
+            dashArray: '3',
+            fillOpacity: 0.7
         };
     }
 
@@ -185,9 +186,11 @@
     var geojson;
     function highlightFeature(e) {
         var layer = e.target;
-        // 호버 시에도 경계선이 두드러지지 않게 투명도만 살짝 조정
         layer.setStyle({
-            fillOpacity: 1.0
+            weight: 3, // 호버 시 진해지는 테두리 복구
+            color: '#666',
+            dashArray: '',
+            fillOpacity: 0.9
         });
         if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
             layer.bringToFront();
@@ -219,45 +222,6 @@
                 onEachFeature: onEachFeature
             }).addTo(map);
             
-            // [수정] 광역/기초자치단체 단위 라벨 생성 (서울특별시, 남양주시 등)
-            var labelBounds = {};
-            geojson.eachLayer(function(layer) {
-                var nameParts = layer.feature.properties['행정구역'].split(' ');
-                if (nameParts.length >= 2) {
-                    var doName = nameParts[0];
-                    var labelName = "";
-                    
-                    // 특별시, 광역시, 특별자치시 등은 해당 도시 전체를 하나로 묶음
-                    if (doName.endsWith('시')) {
-                        labelName = doName; 
-                    } else {
-                        // 경기도, 강원도 등은 시/군 단위로 묶음 (남양주시, 가평군 등)
-                        labelName = nameParts[1];
-                    }
-                    
-                    var bounds = layer.getBounds();
-                    if (!labelBounds[labelName]) {
-                        labelBounds[labelName] = { bounds: L.latLngBounds(bounds.getSouthWest(), bounds.getNorthEast()), name: labelName };
-                    } else {
-                        labelBounds[labelName].bounds.extend(bounds);
-                    }
-                }
-            });
-
-            // 계산된 영역의 중앙에 큰 라벨 텍스트 마커 추가
-            for (var key in labelBounds) {
-                var center = labelBounds[key].bounds.getCenter();
-                L.marker(center, {
-                    icon: L.divIcon({
-                        className: 'gu-label',
-                        html: '<div style="font-size: 18px; font-weight: 900; color: #111; text-shadow: -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff, 2px 2px 0 #fff;">' + labelBounds[key].name + '</div>',
-                        iconSize: [150, 30],
-                        iconAnchor: [75, 15]
-                    }),
-                    interactive: false // 마우스 이벤트 무시 (지도 클릭 방해 방지)
-                }).addTo(map);
-            }
-
             // 데이터 범위에 맞게 지도 확대/축소 조절
             map.fitBounds(geojson.getBounds());
         })
