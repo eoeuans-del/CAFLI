@@ -60,9 +60,9 @@ def fetch_tollgate_traffic_api():
     return gdf_tg
 
 def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, vehicle_df: pd.DataFrame, dem_slope_df: pd.DataFrame):
-    # KOSIS 시군구 차량 통계를 하위 행정동으로 상속
+    # KOSIS 시군구 차량 통계를 하위 행정동으로 상속 (시도명 매칭하여 '2023' 컬럼인 1인당 등록대수 추출)
     base_gdf['per_capita_vehicle'] = base_gdf['행정구역'].apply(
-        lambda x: vehicle_df[vehicle_df.iloc[:, 0].apply(lambda s: str(s) in x)].iloc[0, 1] 
+        lambda x: vehicle_df[vehicle_df.iloc[:, 0].apply(lambda s: str(s) in x)].iloc[0, 2] 
         if any(vehicle_df.iloc[:, 0].apply(lambda s: str(s) in x)) else 0.35
     )
     
@@ -171,9 +171,15 @@ if __name__ == "__main__":
     fully_loaded_gdf.set_crs(epsg=5179, allow_override=True, inplace=True)
     fully_loaded_gdf = fully_loaded_gdf.dropna(subset=['geometry'])
     
-    # ★ [핵심 수정 포인트]: 오타 없이 순수 기하학 객체(geometry)만 정확하게 주입합니다.
+    # ★ [핵심 수정 포인트]: DEM 이미지와 공간 좌표계를 일치시키기 위해 래스터 원본 CRS(EPSG:5186 계열)로 일시 투영합니다.
+    import rasterio
+    with rasterio.open('./data/dem_90m.img') as src:
+        raster_crs = src.crs
+    
+    dem_calc_gdf = fully_loaded_gdf.to_crs(raster_crs)
+
 # ★ [수정 포인트]: GeoSeries의 복합 객체 구조를 해체하여 래스터 엔진이 가장 좋아하는 '순수 기하학 리스트(List)' 형태로 강제 변환 후 주입합니다 (실제 코드 적용 시 해당 줄은 삭제하라) ★
-    dem_stats = zonal_stats(fully_loaded_gdf.geometry.tolist(), './data/dem_90m.img', stats="std", geojson_out=False)
+    dem_stats = zonal_stats(dem_calc_gdf.geometry.tolist(), './data/dem_90m.img', stats="std", geojson_out=False)
     # 결과를 담을 데이터프레임(dem_slope_df)을 명시적으로 초기화한 뒤 데이터 주입
     dem_slope_df = pd.DataFrame({'adm_cd2': fully_loaded_gdf['adm_cd2']})
     dem_slope_df['avg_slope'] = [s['std'] if s['std'] is not None else 0 for s in dem_stats]
