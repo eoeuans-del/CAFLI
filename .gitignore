@@ -20,3 +20,4 @@ venv/
 
 # Allow the final result data to be pushed for the web frontend
 !cafli-web/cafli_model_result.geojson
+!cafli-web/regions_boundary.geojson

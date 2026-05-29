@@ -13,16 +13,20 @@ def process_integrated_transit_data(base_gdf: gpd.GeoDataFrame, bus_csv_path: st
     df_bus['transit_type'] = 'bus' # 출처 꼬리표 부착
 
     # [2] 철도 데이터 로드 및 표준화 (.xlsx)
-    # ※ 주의: 엑셀 파일을 읽기 위해 openpyxl 엔진을 사용합니다.
     df_rail = pd.read_excel(rail_excel_path)
     df_rail = df_rail.rename(columns={'역경도': 'lon', '역위도': 'lat'})
-    df_rail['transit_type'] = 'railway' # 출처 꼬리표 부착
+    df_rail['transit_type'] = 'railway'
+    
+    # 배차 충족률 추정을 위한 가중치 부여: 지하철은 일반 버스보다 배차 빈도 및 수송량이 압도적으로 높음
+    # 환승역일 경우 가중치 추가 (환승역구분 컬럼 활용)
+    df_rail['weight'] = df_rail['환승역구분'].apply(lambda x: 20 if str(x) == '환승역' else 10)
+    df_bus['weight'] = 1
 
     print("2. 두 데이터를 하나의 대중교통 인프라로 수직 병합(Concat)합니다...")
-    # 좌표와 타입 컬럼만 추출하여 위아래로 이어 붙입니다.
+    # 좌표, 타입, 가중치 컬럼을 합칩니다.
     df_combined = pd.concat([
-        df_bus[['lon', 'lat', 'transit_type']], 
-        df_rail[['lon', 'lat', 'transit_type']]
+        df_bus[['lon', 'lat', 'transit_type', 'weight']], 
+        df_rail[['lon', 'lat', 'transit_type', 'weight']]
     ], ignore_index=True)
 
     # 간혹 좌표가 누락된 불량 데이터가 있을 수 있으므로 방어 코드를 추가합니다.
@@ -41,16 +45,19 @@ def process_integrated_transit_data(base_gdf: gpd.GeoDataFrame, bus_csv_path: st
     joined = gpd.sjoin(gdf_transit, base_gdf, how='inner', predicate='within')
 
     print("5. 행정동(adm_cd2) 기준으로 대중교통 인프라(T 지표)를 집계합니다...")
-    # 해당 행정동 내에 떨어진 버스+철도 정류장의 총합을 카운트합니다.
-    t_index_df = joined.groupby('adm_cd2').size().reset_index(name='transit_stop_count')
+    # 단순 개수(count)와 가중치 합산(dispatch_score)을 모두 구합니다.
+    t_counts = joined.groupby('adm_cd2').size().reset_index(name='transit_stop_count')
+    t_weights = joined.groupby('adm_cd2')['weight'].sum().reset_index(name='transit_dispatch_score')
 
     print("6. 집계된 T 지표를 베이스캠프에 최종 결합합니다...")
-    final_gdf = base_gdf.merge(t_index_df, on='adm_cd2', how='left')
+    final_gdf = base_gdf.merge(t_counts, on='adm_cd2', how='left')
+    final_gdf = final_gdf.merge(t_weights, on='adm_cd2', how='left')
     
-    # 대중교통 인프라가 전혀 없는 외곽 지역은 결측치(NaN)가 되므로 0으로 채워줍니다.
+    # 결측치 처리
     final_gdf['transit_stop_count'] = final_gdf['transit_stop_count'].fillna(0)
+    final_gdf['transit_dispatch_score'] = final_gdf['transit_dispatch_score'].fillna(0)
 
-    print(f"-> 통합 대중교통(T 지표) 공간 연산 완료. 총 {len(df_combined)}개의 인프라가 지도상에 매핑되었습니다.\n")
+    print(f"-> 통합 대중교통(T 지표) 공간 연산 완료. 총 {len(df_combined)}개의 인프라(가중치 합산 반영)가 지도상에 매핑되었습니다.\n")
     return final_gdf
 
 if __name__ == "__main__":

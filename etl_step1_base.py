@@ -17,7 +17,30 @@ def build_base_geodataframe(geojson_path, pop_csv_path):
 
     gdf_boundaries['adm_cd2'] = gdf_boundaries['adm_cd2'].astype(str)
 
-    print("2. [수정] 통계청(SGIS)과 행안부(MOIS) 코드 불일치 및 인구 통계 원본 손상 문제로 인해, SHP 데이터를 기반으로 행정구역을 자체 복원합니다...")
+    print("2. [수정] 통계청(SGIS)과 행안부(MOIS) 코드 불일치 및 인구 통계 원본 손상 문제 해결을 위해 외부 매핑 테이블을 로드합니다...")
+    import urllib.request
+    import json
+    import os
+    
+    mapping_path = './data/adm_mapping.json'
+    if not os.path.exists(mapping_path):
+        url = 'https://raw.githubusercontent.com/vuski/admdongkor/master/ver20230701/HangJeongDong_ver20230701.geojson'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            with open(mapping_path, 'wb') as f:
+                f.write(response.read())
+                
+    with open(mapping_path, 'r', encoding='utf-8') as f:
+        mapping_data = json.load(f)
+        
+    mapping_df = pd.DataFrame([feat['properties'] for feat in mapping_data['features']])
+    # adm_cd8(통계청 8자리)를 기준으로 병합
+    mapping_df['adm_cd8'] = mapping_df['adm_cd8'].astype(str)
+    
+    # 조인
+    gdf_boundaries = gdf_boundaries.merge(mapping_df[['adm_cd8', 'adm_nm', 'sggnm', 'sidonm']], left_on='adm_cd2', right_on='adm_cd8', how='left')
+    
+    # 결측치(매핑 실패) 방어: 기존 로직으로 폴백
     sido_map = {
         '11': '서울특별시', '21': '부산광역시', '22': '대구광역시', '23': '인천광역시',
         '24': '광주광역시', '25': '대전광역시', '26': '울산광역시', '29': '세종특별자치시',
@@ -29,8 +52,15 @@ def build_base_geodataframe(geojson_path, pop_csv_path):
     if 'ADM_NM' not in gdf_boundaries.columns:
         adm_nm_col = [c for c in gdf_boundaries.columns if 'NM' in c.upper()][0]
         
-    gdf_boundaries['sido_nm'] = gdf_boundaries['adm_cd2'].str[:2].map(sido_map)
-    gdf_boundaries['행정구역'] = gdf_boundaries['sido_nm'] + " " + gdf_boundaries[adm_nm_col]
+    fallback_sido = gdf_boundaries['adm_cd2'].str[:2].map(sido_map)
+    fallback_nm = fallback_sido + " " + gdf_boundaries[adm_nm_col]
+    
+    # 매핑 성공하면 adm_nm, 실패하면 fallback_nm 사용
+    gdf_boundaries['행정구역'] = gdf_boundaries['adm_nm'].fillna(fallback_nm)
+    
+    # 시군구 단위를 묶기 위한 파생 컬럼 (예: 서울특별시 종로구)
+    gdf_boundaries['sido_sgg'] = gdf_boundaries['sidonm'].fillna(fallback_sido) + " " + gdf_boundaries['sggnm'].fillna("")
+    gdf_boundaries['sido_sgg'] = gdf_boundaries['sido_sgg'].str.strip()
 
     print("3. 베이스 데이터(base_gdf) 구축을 완료합니다...")
     base_gdf = gdf_boundaries.copy()

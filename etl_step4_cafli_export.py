@@ -92,8 +92,8 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
     t_boarding_proxy = base_gdf['transit_stop_count'] * (base_gdf['mxi_entropy'] + 1)
     # 2. 생활권 대중교통 밀집도 (10/30 = 33%): 면적 대비 정류장 수
     t_living_density = base_gdf['transit_stop_count'] / base_gdf['area_sqkm']
-    # 3. 배차 충족률 Proxy (5/30 = 17%): 교차로가 많을수록(도심일수록) 배차가 원활하다고 가정
-    t_dispatch_proxy = base_gdf['intersection_count']
+    # 3. 배차 충족률 Proxy (5/30 = 17%): 지하철 및 환승역 가중치가 반영된 서비스 점수
+    t_dispatch_proxy = base_gdf['transit_dispatch_score']
     
     base_gdf['T_score'] = (
         min_max_scale(t_boarding_proxy) * 0.50 +
@@ -115,10 +115,10 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
     # 1. 하이패스 밀도 역산 Proxy (15/35 = 43%): 기존 톨게이트 페널티
     v_hipass_score = min_max_scale(base_gdf['v_penalty'], inverse=True)
     
-    # 2. 네비게이션 출발 비율 Proxy (12/35 = 34%): 서울 중심(시청)으로부터의 거리로 베드타운(차량출발↑) 여부 역산 추정
-    seoul_center = Point(953936.122, 1952052.786) # EPSG:5179 기준 대략적인 서울 시청 좌표
-    v_navi_proxy = base_gdf['centroid'].distance(seoul_center)
-    v_navi_score = min_max_scale(v_navi_proxy, inverse=True) # 멀수록 감점
+    # 2. 자가용 수단분담률 추정치 (12/35 = 34%): (대중교통이 취약하고 + 차량보유율이 높을수록) 자가용 이용 통행이 많다는 팩트 기반 추정
+    # T_score(0~100)가 낮을수록 대중교통이 취약함 -> (100 - T_score)
+    v_modal_split_proxy = (100 - base_gdf['T_score']) * base_gdf['per_capita_vehicle']
+    v_navi_score = min_max_scale(v_modal_split_proxy, inverse=True) # 자가용 수단분담률이 높을수록 감점
     
     # 3. 차량 보유율 역산 (8/35 = 23%)
     v_ownership_score = min_max_scale(base_gdf['per_capita_vehicle'], inverse=True)
@@ -154,6 +154,15 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
     export_path = './data/cafli_model_result.geojson'
     final_export.to_file(export_path, driver='GeoJSON', encoding='utf-8')
     print(f"🎉 성공! 시연용 데이터 마트가 저장되었습니다: {export_path}")
+    
+    print("6. [추가] 시군구 단위 굵은 테두리를 위한 병합(Dissolve) 경계선 파일을 추출합니다...")
+    if 'sido_sgg' in base_gdf.columns:
+        dissolved = base_gdf.dissolve(by='sido_sgg', aggfunc='mean', numeric_only=True)
+        dissolved = dissolved.reset_index()
+        dissolved = dissolved.to_crs(epsg=4326)
+        boundary_path = './data/regions_boundary.geojson'
+        dissolved[['sido_sgg', 'geometry']].to_file(boundary_path, driver='GeoJSON', encoding='utf-8')
+        print(f"🎉 시군구 경계선 데이터가 저장되었습니다: {boundary_path}")
     
     return final_export
 
