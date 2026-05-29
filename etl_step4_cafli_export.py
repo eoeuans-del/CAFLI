@@ -87,9 +87,21 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
         scaled = (series - series.min()) / (series.max() - series.min()) * 100
         return 100 - scaled if inverse else scaled
 
-    base_gdf['T_score'] = min_max_scale(base_gdf['t_density'])
+    # [수정] T 지표 (대중교통 활성 지수, 30%)
+    # 1. 인당 탑승 빈도 Proxy (15/30 = 50%): 상권이 발달(다양성)할수록 탑승 빈도가 높다고 가정
+    t_boarding_proxy = base_gdf['transit_stop_count'] * (base_gdf['mxi_entropy'] + 1)
+    # 2. 생활권 대중교통 밀집도 (10/30 = 33%): 면적 대비 정류장 수
+    t_living_density = base_gdf['transit_stop_count'] / base_gdf['area_sqkm']
+    # 3. 배차 충족률 Proxy (5/30 = 17%): 교차로가 많을수록(도심일수록) 배차가 원활하다고 가정
+    t_dispatch_proxy = base_gdf['intersection_count']
     
-    # [수정] S 지표 (생활편의성) 10% = 업종 다양성(MXI, 5%) + 교차로 밀도(5%)
+    base_gdf['T_score'] = (
+        min_max_scale(t_boarding_proxy) * 0.50 +
+        min_max_scale(t_living_density) * 0.33 +
+        min_max_scale(t_dispatch_proxy) * 0.17
+    )
+    
+    # [수정] S 지표 (생활편의성, 10%) = 업종 다양성(MXI, 5%) + 교차로 밀도(5%)
     base_gdf['intersection_density'] = base_gdf['intersection_count'] / base_gdf['area_sqkm']
     base_gdf['mxi_score'] = min_max_scale(base_gdf['mxi_entropy'])
     base_gdf['intersection_score'] = min_max_scale(base_gdf['intersection_density'])
@@ -99,10 +111,21 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
     
     base_gdf['per_capita_vehicle'] = pd.to_numeric(base_gdf['per_capita_vehicle'].astype(str).str.replace(',', ''), errors='coerce').fillna(0.35)
     
-    base_gdf['v_combined_penalty'] = base_gdf['v_penalty'] * base_gdf['per_capita_vehicle']
-    base_gdf['V_score'] = min_max_scale(base_gdf['v_combined_penalty'], inverse=True)
+    # [수정] V 지표 (차량 비의존도, 35%)
+    # 1. 하이패스 밀도 역산 Proxy (15/35 = 43%): 기존 톨게이트 페널티
+    v_hipass_score = min_max_scale(base_gdf['v_penalty'], inverse=True)
     
-    # [수정] W 지표 (보행 활성화 지수, Walkability)
+    # 2. 네비게이션 출발 비율 Proxy (12/35 = 34%): 서울 중심(시청)으로부터의 거리로 베드타운(차량출발↑) 여부 역산 추정
+    seoul_center = Point(953936.122, 1952052.786) # EPSG:5179 기준 대략적인 서울 시청 좌표
+    v_navi_proxy = base_gdf['centroid'].distance(seoul_center)
+    v_navi_score = min_max_scale(v_navi_proxy, inverse=True) # 멀수록 감점
+    
+    # 3. 차량 보유율 역산 (8/35 = 23%)
+    v_ownership_score = min_max_scale(base_gdf['per_capita_vehicle'], inverse=True)
+    
+    base_gdf['V_score'] = (v_hipass_score * 0.43) + (v_navi_score * 0.34) + (v_ownership_score * 0.23)
+    
+    # [수정] W 지표 (보행 활성화 지수, Walkability, 25%)
     # 1. 지형 평탄성 (Slope)
     slope_score = min_max_scale(base_gdf['avg_slope'], inverse=True)
     # 2. 보행 통행 비율 Proxy (차량 보유율의 역산으로 보행 지향성 추정)
