@@ -80,7 +80,6 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
 
     print("3. [정석 연산] 왜곡 제거를 위한 밀도 변환 및 0~100점 정규화(Min-Max)를 실행합니다...")
     base_gdf['t_density'] = base_gdf['transit_stop_count'] / base_gdf['area_sqkm']
-    base_gdf['s_density'] = base_gdf['amenity_count'] / base_gdf['area_sqkm']
     
     def min_max_scale(series, inverse=False):
         if series.max() == series.min():
@@ -89,15 +88,33 @@ def calculate_final_cafli(base_gdf: gpd.GeoDataFrame, tg_gdf: gpd.GeoDataFrame, 
         return 100 - scaled if inverse else scaled
 
     base_gdf['T_score'] = min_max_scale(base_gdf['t_density'])
-    base_gdf['S_score'] = min_max_scale(base_gdf['s_density'])
+    
+    # [수정] S 지표 (생활편의성) 10% = 업종 다양성(MXI, 5%) + 교차로 밀도(5%)
+    base_gdf['intersection_density'] = base_gdf['intersection_count'] / base_gdf['area_sqkm']
+    base_gdf['mxi_score'] = min_max_scale(base_gdf['mxi_entropy'])
+    base_gdf['intersection_score'] = min_max_scale(base_gdf['intersection_density'])
+    
+    # S_score는 두 하위 지표의 5:5 평균으로 100점 만점 산출
+    base_gdf['S_score'] = (base_gdf['mxi_score'] * 0.5) + (base_gdf['intersection_score'] * 0.5)
     
     base_gdf['per_capita_vehicle'] = pd.to_numeric(base_gdf['per_capita_vehicle'].astype(str).str.replace(',', ''), errors='coerce').fillna(0.35)
     
     base_gdf['v_combined_penalty'] = base_gdf['v_penalty'] * base_gdf['per_capita_vehicle']
     base_gdf['V_score'] = min_max_scale(base_gdf['v_combined_penalty'], inverse=True)
-    base_gdf['W_score'] = min_max_scale(base_gdf['avg_slope'], inverse=True)
+    
+    # [수정] W 지표 (보행 활성화 지수, Walkability)
+    # 1. 지형 평탄성 (Slope)
+    slope_score = min_max_scale(base_gdf['avg_slope'], inverse=True)
+    # 2. 보행 통행 비율 Proxy (차량 보유율의 역산으로 보행 지향성 추정)
+    walk_proxy_score = min_max_scale(base_gdf['per_capita_vehicle'], inverse=True)
+    # 3. 단거리 이동 집중도 Proxy (면적당 편의시설 및 대중교통 인프라의 조밀도)
+    base_gdf['short_dist_density'] = (base_gdf['amenity_count'] + base_gdf['transit_stop_count']) / base_gdf['area_sqkm']
+    short_dist_score = min_max_scale(base_gdf['short_dist_density'])
+    
+    # W_score 산출 (지형 50%, 보행 30%, 단거리밀집 20%의 비율로 100점 만점 산출)
+    base_gdf['W_score'] = (slope_score * 0.5) + (walk_proxy_score * 0.3) + (short_dist_score * 0.2)
 
-    print("4. 기획서 원본 공식(V:35, T:30, W:25, S:10)을 적용하여 최종 CAFLI 지수를 산출합니다...")
+    print("4. 기획서 개편 공식(V:35, T:30, W:25, S:10)을 적용하여 최종 CAFLI 지수를 산출합니다...")
     base_gdf['CAFLI_Index'] = (
         base_gdf['V_score'] * 0.35 + 
         base_gdf['T_score'] * 0.30 + 

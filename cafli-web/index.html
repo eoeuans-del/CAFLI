@@ -66,9 +66,13 @@
             '<b>' + props['행정구역'] + '</b><br />' +
             '🏆 CAFLI 총점: <b>' + props['CAFLI_Index'] + ' 점</b><br /><br />' +
             '🚗 차량비의존도(V): ' + (props['V_score'] ? props['V_score'].toFixed(1) : 0) + '점<br />' +
-            '🚌 대중교통밀도(T): ' + (props['T_score'] ? props['T_score'].toFixed(1) : 0) + '점<br />' +
-            '🏬 상권편의성(S): ' + (props['S_score'] ? props['S_score'].toFixed(1) : 0) + '점<br />' +
-            '⛰️ 평지친화도(W): ' + (props['W_score'] ? props['W_score'].toFixed(1) : 0) + '점'
+            ' &nbsp;&nbsp;<span style="font-size:11px; color:#666;">(하이패스 밀도, 자가용 비율 등)</span><br />' +
+            '🚌 대중교통활성(T): ' + (props['T_score'] ? props['T_score'].toFixed(1) : 0) + '점<br />' +
+            ' &nbsp;&nbsp;<span style="font-size:11px; color:#666;">(정류장 밀도, 탑승 빈도)</span><br />' +
+            '🏬 복합생활편의(S): ' + (props['S_score'] ? props['S_score'].toFixed(1) : 0) + '점<br />' +
+            ' &nbsp;&nbsp;<span style="font-size:11px; color:#666;">(업종 다양성, 교차로 밀도)</span><br />' +
+            '🚶‍♂️ 보행활성지수(W): ' + (props['W_score'] ? props['W_score'].toFixed(1) : 0) + '점<br />' +
+            ' &nbsp;&nbsp;<span style="font-size:11px; color:#666;">(지형 평탄성, 단거리 집중도)</span>'
             : '행정동에 마우스를 올려보세요.');
     };
     info.addTo(map);
